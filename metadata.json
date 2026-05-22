@@ -1,0 +1,6 @@
+{
+  "name": "TDAH Tracker",
+  "description": "Sistema de acompanhamento multidisciplinar para crianças com TDAH com IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
