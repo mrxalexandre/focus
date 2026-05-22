@@ -57,38 +57,65 @@ export default function App() {
 
   useEffect(() => {
     fetch('/api/users')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Network response was not ok');
+        return r.json();
+      })
       .then(data => {
         if (data && data.length > 0) {
           setUsers(data);
+          localStorage.setItem('tdah_users', JSON.stringify(data));
+        } else {
+          throw new Error('No users returned');
+        }
+      })
+      .catch((err) => {
+        console.warn('API fetch failed, falling back to localStorage', err);
+        const storedUsers = localStorage.getItem('tdah_users');
+        if (storedUsers) {
+          setUsers(JSON.parse(storedUsers));
         } else {
           const defaultAdmin: User = { id: 'admin-1', username: 'admin', name: 'Administrador', role: 'admin' };
           setUsers([defaultAdmin]);
-          fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([defaultAdmin]) });
+          localStorage.setItem('tdah_users', JSON.stringify([defaultAdmin]));
+          // Try to create it on the server anyway
+          fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([defaultAdmin]) }).catch(() => {});
         }
-      })
-      .catch(console.error);
+      });
 
     fetch('/api/children')
-      .then(r => r.json())
-      .then(data => setChildren(data || []))
-      .catch(console.error);
+      .then(r => {
+        if (!r.ok) throw new Error('API failed');
+        return r.json();
+      })
+      .then(data => {
+        setChildren(data || []);
+        localStorage.setItem('tdah_children', JSON.stringify(data || []));
+      })
+      .catch((err) => {
+         console.warn('Fallback children to localstorage', err);
+         const stored = localStorage.getItem('tdah_children');
+         if (stored) setChildren(JSON.parse(stored));
+      });
   }, []);
 
   const handleAddUser = (user: User) => {
     const newUsers = [...users, user];
     setUsers(newUsers);
+    localStorage.setItem('tdah_users', JSON.stringify(newUsers));
     fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUsers) }).catch(console.error);
   };
   
   const handleUpdateUsers = (newUsers: User[]) => {
       setUsers(newUsers);
+      localStorage.setItem('tdah_users', JSON.stringify(newUsers));
       fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUsers) }).catch(console.error);
   };
 
   const handleAddChild = (child: Child) => {
     const newChildren = [...children, child];
     setChildren(newChildren);
+    localStorage.setItem('tdah_children', JSON.stringify(newChildren));
     fetch('/api/children', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newChildren) }).catch(console.error);
   };
 
