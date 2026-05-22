@@ -7,7 +7,11 @@ import fsPromises from "fs/promises";
 
 const DB_FILE = path.join(process.cwd(), 'database.json');
 if (!fs.existsSync(DB_FILE)) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ records: [] }));
+  fs.writeFileSync(DB_FILE, JSON.stringify({ 
+    records: [], 
+    users: [{ id: 'admin-1', username: 'admin', name: 'Administrador', role: 'admin' }],
+    children: [] 
+  }));
 }
 
 const SYSTEM_INSTRUCTION = `Você é o motor de inteligência artificial central de um sistema de acompanhamento multidisciplinar para crianças com TDAH. O sistema possui 5 visões de usuários (Psicóloga, Psicopedagoga, Fonoaudióloga, Professora e Pais) e armazena os dados brutos em um banco de dados Google Sheets. Sua função é processar as entradas de texto, validar as métricas escolares, estruturar os dados para os comandos de CRUD e gerar relatórios consolidados e humanizados para os pais.
@@ -82,6 +86,103 @@ async function startServer() {
       }
     } catch (err) {
       res.status(500).json({ error: "Error reading database" });
+    }
+  });
+
+  app.get("/api/users", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      res.json(db.users || []);
+    } catch (err) {
+      res.status(500).json({ error: "Error reading users" });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      db.users = req.body;
+      await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+      res.json(db.users);
+    } catch (err) {
+      res.status(500).json({ error: "Error saving users" });
+    }
+  });
+
+  app.get("/api/children", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      res.json(db.children || []);
+    } catch (err) {
+      res.status(500).json({ error: "Error reading children" });
+    }
+  });
+
+  app.post("/api/children", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      db.children = req.body;
+      await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+      res.json(db.children);
+    } catch (err) {
+      res.status(500).json({ error: "Error saving children" });
+    }
+  });
+
+  app.post("/api/sync-sheets", async (req, res) => {
+    try {
+      const gAccessToken = req.headers.authorization;
+      if (!gAccessToken) return res.status(401).json({ error: "Missing authorization" });
+
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+
+      if (!db.settings?.spreadsheetId) return res.json({ success: true, message: "No spreadsheet configured" });
+
+      const unsyncedRecords = (db.records || []).filter((r: any) => !r.syncedToSheets);
+      if (unsyncedRecords.length === 0) return res.json({ success: true, synced: 0 });
+
+      const rows = unsyncedRecords.map((r: any) => [
+          new Date(r.date).toLocaleString('pt-BR'),
+          r.childName || '',
+          r.userName || '',
+          r.type === 'SALVAR_CLINICA' ? 'Clínica' : 'Escola',
+          JSON.stringify(r.data || {})
+      ]);
+
+      const range = 'Página1';
+      const sheetRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${db.settings.spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+          method: 'POST',
+          headers: {
+            'Authorization': gAccessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ values: rows })
+      });
+      const sheetData = await sheetRes.json();
+
+      if (sheetData.error) {
+          console.error("Sheets sync error:", sheetData.error);
+          return res.status(500).json({ error: sheetData.error.message });
+      }
+
+      // Mark as synced
+      db.records = db.records.map((r: any) => {
+         if (!r.syncedToSheets) {
+            return { ...r, syncedToSheets: true };
+         }
+         return r;
+      });
+      await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+
+      res.json({ success: true, synced: rows.length });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -206,34 +307,12 @@ async function startServer() {
             userName,
             type: intent,
             data: parsedText.data,
-            date: new Date().toISOString()
+            date: new Date().toISOString(),
+            syncedToSheets: false
           };
           
           db.records.push(newRecord);
           await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
-
-          // Se tiver Token do Google e o Spreadsheet ID nas configurações, também salva na planilha
-          const gAccessToken = req.headers.authorization;
-          if (gAccessToken && db.settings?.spreadsheetId) {
-             const range = 'Página1'; // assumed default sheet name or generic
-             const row = [
-                new Date(newRecord.date).toLocaleString('pt-BR'),
-                newRecord.childName || '',
-                newRecord.userName || '',
-                newRecord.type === 'SALVAR_CLINICA' ? 'Clínica' : 'Escola',
-                JSON.stringify(newRecord.data || {})
-             ];
-             fetch(`https://sheets.googleapis.com/v4/spreadsheets/${db.settings.spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
-                 method: 'POST',
-                 headers: {
-                    'Authorization': gAccessToken,
-                    'Content-Type': 'application/json'
-                 },
-                 body: JSON.stringify({ values: [row] })
-             }).then(r => r.json()).then(res => {
-                 if (res.error) console.error("Google Sheets Error:", res.error);
-             }).catch(e => console.error("Sheets sync failed:", e));
-          }
         } catch (dbErr) {
           console.error("Failed to save to mock DB", dbErr);
         }

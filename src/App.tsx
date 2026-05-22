@@ -34,37 +34,62 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const storedUsers = localStorage.getItem('tdah_users');
-    const storedChildren = localStorage.getItem('tdah_children');
+     if (googleAuthToken && currentUser && (currentUser.role === 'admin' || currentUser.role === 'pais')) {
+         const syncData = () => {
+             fetch('/api/sync-sheets', {
+                 method: 'POST',
+                 headers: { 'Authorization': `Bearer ${googleAuthToken}` }
+             }).then(r => r.json()).then(res => {
+                 if (res.synced > 0) {
+                     console.log(`Sincronizados ${res.synced} registros pendentes com o Google Sheets.`);
+                 }
+             }).catch(console.error);
+         };
 
-    if (storedUsers) {
-      setUsers(JSON.parse(storedUsers));
-    } else {
-      const defaultAdmin: User = { id: 'admin-1', username: 'admin', name: 'Administrador', role: 'admin' };
-      setUsers([defaultAdmin]);
-      localStorage.setItem('tdah_users', JSON.stringify([defaultAdmin]));
-    }
+         // Sincroniza imediatamente ao logar/mudar
+         syncData();
 
-    if (storedChildren) {
-      setChildren(JSON.parse(storedChildren));
-    }
+         // E a cada 30 segundos mantém sincronizado
+         const interval = setInterval(syncData, 30000);
+         return () => clearInterval(interval);
+     }
+  }, [googleAuthToken, currentUser]);
+
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.length > 0) {
+          setUsers(data);
+        } else {
+          const defaultAdmin: User = { id: 'admin-1', username: 'admin', name: 'Administrador', role: 'admin' };
+          setUsers([defaultAdmin]);
+          fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify([defaultAdmin]) });
+        }
+      })
+      .catch(console.error);
+
+    fetch('/api/children')
+      .then(r => r.json())
+      .then(data => setChildren(data || []))
+      .catch(console.error);
   }, []);
 
   const handleAddUser = (user: User) => {
     const newUsers = [...users, user];
     setUsers(newUsers);
-    localStorage.setItem('tdah_users', JSON.stringify(newUsers));
+    fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUsers) }).catch(console.error);
   };
   
   const handleUpdateUsers = (newUsers: User[]) => {
       setUsers(newUsers);
-      localStorage.setItem('tdah_users', JSON.stringify(newUsers));
+      fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newUsers) }).catch(console.error);
   };
 
   const handleAddChild = (child: Child) => {
     const newChildren = [...children, child];
     setChildren(newChildren);
-    localStorage.setItem('tdah_children', JSON.stringify(newChildren));
+    fetch('/api/children', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newChildren) }).catch(console.error);
   };
 
   const handleLogout = () => {
