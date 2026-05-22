@@ -85,6 +85,28 @@ async function startServer() {
     }
   });
 
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      res.json(db.settings || {});
+    } catch (err) {
+      res.status(500).json({ error: "Error reading settings" });
+    }
+  });
+
+  app.post("/api/settings", async (req, res) => {
+    try {
+      const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
+      const db = JSON.parse(dbData);
+      db.settings = { ...db.settings, ...req.body };
+      await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+      res.json(db.settings);
+    } catch (err) {
+      res.status(500).json({ error: "Error saving settings" });
+    }
+  });
+
   app.delete("/api/records/:id", async (req, res) => {
     try {
       const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
@@ -175,7 +197,8 @@ async function startServer() {
         try {
           const dbData = await fsPromises.readFile(DB_FILE, 'utf-8');
           const db = JSON.parse(dbData);
-          db.records.push({
+          
+          const newRecord = {
             id: Date.now().toString(),
             childId,
             childName,
@@ -184,8 +207,33 @@ async function startServer() {
             type: intent,
             data: parsedText.data,
             date: new Date().toISOString()
-          });
+          };
+          
+          db.records.push(newRecord);
           await fsPromises.writeFile(DB_FILE, JSON.stringify(db, null, 2));
+
+          // Se tiver Token do Google e o Spreadsheet ID nas configurações, também salva na planilha
+          const gAccessToken = req.headers.authorization;
+          if (gAccessToken && db.settings?.spreadsheetId) {
+             const range = 'Página1'; // assumed default sheet name or generic
+             const row = [
+                new Date(newRecord.date).toLocaleString('pt-BR'),
+                newRecord.childName || '',
+                newRecord.userName || '',
+                newRecord.type === 'SALVAR_CLINICA' ? 'Clínica' : 'Escola',
+                JSON.stringify(newRecord.data || {})
+             ];
+             fetch(`https://sheets.googleapis.com/v4/spreadsheets/${db.settings.spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`, {
+                 method: 'POST',
+                 headers: {
+                    'Authorization': gAccessToken,
+                    'Content-Type': 'application/json'
+                 },
+                 body: JSON.stringify({ values: [row] })
+             }).then(r => r.json()).then(res => {
+                 if (res.error) console.error("Google Sheets Error:", res.error);
+             }).catch(e => console.error("Sheets sync failed:", e));
+          }
         } catch (dbErr) {
           console.error("Failed to save to mock DB", dbErr);
         }

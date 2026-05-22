@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Send, Bot, Database, Loader2, Plus, Trash2, Calendar } from 'lucide-react';
 import { EngineResponse, User, Child } from '../types.ts';
 import { RecordsTimeline } from './RecordsTimeline.tsx';
+import { getAccessToken } from '../firebase.ts';
 
 const DISCIPLINAS = ['Portugues', 'Matematica', 'Historia', 'Ciencias', 'Ensaio', 'Educação Física', 'Pratica textual', 'Líder em mim', 'Inglês'];
 
@@ -122,9 +123,15 @@ export function EscolaForm({ user, child }: EscolaFormProps) {
     const autoContext = `CONTEXTO AUTOMÁTICO DO SISTEMA (Não ignorar):\nPaciente (Aluno): ${child?.name || 'Não atribuído'}\nProfissional: ${user.name} (Professora)\nData/Hora: ${dataHora}\n\nDADOS DA ESCOLA (Códigos/Checklist):\n${formattedData}`;
 
     try {
+      const gToken = await getAccessToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (gToken) {
+          headers['Authorization'] = `Bearer ${gToken}`;
+      }
+
       const res = await fetch('/api/engine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           intent: 'SALVAR_ESCOLA',
           inputData: autoContext,

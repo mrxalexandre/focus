@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Send, Bot, Database, Loader2, Calendar } from 'lucide-react';
 import { EngineResponse, User, Child } from '../types.ts';
 import { RecordsTimeline } from './RecordsTimeline.tsx';
+import { getAccessToken } from '../firebase.ts';
 
 interface ClinicaFormProps {
   user: User;
@@ -51,9 +52,15 @@ export function ClinicaForm({ user, child }: ClinicaFormProps) {
     const autoContext = `CONTEXTO AUTOMÁTICO DO SISTEMA (Não ignorar):\nPaciente: ${child?.name || 'Não atribuído'}\nProfissional: ${user.name}\nEspecialidade: ${user.role}\nData/Hora: ${dataHora}\n\nRELATO DA SESSÃO:\n${inputData}`;
 
     try {
+      const gToken = await getAccessToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (gToken) {
+          headers['Authorization'] = `Bearer ${gToken}`;
+      }
+
       const res = await fetch('/api/engine', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           intent: 'SALVAR_CLINICA',
           inputData: autoContext,
