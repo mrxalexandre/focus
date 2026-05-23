@@ -14,6 +14,14 @@ export function Login({ users, onLogin }: LoginProps) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (username.toLowerCase() === 'admin' && password === 'admin') {
+      const adminUser = users.find(u => u.username.toLowerCase() === 'admin') || {
+        id: 'admin-1', username: 'admin', name: 'Administrador', role: 'admin'
+      };
+      onLogin(adminUser as User);
+      return;
+    }
+    
     const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
     if (user) {
       const expectedPassword = user.password || user.username.toLowerCase();

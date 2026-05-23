@@ -1,12 +1,15 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+export const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+// Remover scope do spreadsheet já que não vamos mais usar planilhas
+// provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

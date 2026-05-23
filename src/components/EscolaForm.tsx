@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Send, Bot, Database, Loader2, Plus, Trash2, Calendar } from 'lucide-react';
 import { EngineResponse, User, Child } from '../types.ts';
 import { RecordsTimeline } from './RecordsTimeline.tsx';
-import { getAccessToken } from '../firebase.ts';
+import { collection, onSnapshot, query, where, addDoc } from 'firebase/firestore';
+import { db } from '../firebase.ts';
 
 const DISCIPLINAS = ['Portugues', 'Matematica', 'Historia', 'Ciencias', 'Ensaio', 'Educação Física', 'Pratica textual', 'Líder em mim', 'Inglês'];
 
@@ -70,22 +71,18 @@ export function EscolaForm({ user, child }: EscolaFormProps) {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [filterDate, setFilterDate] = useState('');
 
-  const fetchRecords = () => {
-      setLoadingRecords(true);
-      fetch(`/api/records?childId=${child?.id}`)
-        .then(res => res.json())
-        .then(data => data.filter((r: any) => r.userId === user.id || r.type === 'SALVAR_ESCOLA'))
-        .then(data => data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()))
-        .then(setRecords)
-        .catch(console.error)
-        .finally(() => setLoadingRecords(false));
-  };
-
   useEffect(() => {
-      if (activeTab === 'history') {
-          fetchRecords();
-      }
-  }, [activeTab, child]);
+    if (!child) return;
+    setLoadingRecords(true);
+    const q = query(collection(db, 'records'), where('childId', '==', child.id));
+    const unsub = onSnapshot(q, (snapshot) => {
+      let docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      docs = docs.filter((r: any) => r.userId === user.id || r.type === 'SALVAR_ESCOLA');
+      setRecords(docs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoadingRecords(false);
+    });
+    return () => unsub();
+  }, [child, user]);
 
   const filteredRecords = useMemo(() => {
      if (!filterDate) return records;
@@ -123,15 +120,9 @@ export function EscolaForm({ user, child }: EscolaFormProps) {
     const autoContext = `CONTEXTO AUTOMÁTICO DO SISTEMA (Não ignorar):\nPaciente (Aluno): ${child?.name || 'Não atribuído'}\nProfissional: ${user.name} (Professora)\nData/Hora: ${dataHora}\n\nDADOS DA ESCOLA (Códigos/Checklist):\n${formattedData}`;
 
     try {
-      const gToken = await getAccessToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (gToken) {
-          headers['Authorization'] = `Bearer ${gToken}`;
-      }
-
       const res = await fetch('/api/engine', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intent: 'SALVAR_ESCOLA',
           inputData: autoContext,
@@ -143,6 +134,30 @@ export function EscolaForm({ user, child }: EscolaFormProps) {
       });
       const content = await res.json();
       setResponse(content);
+      if (!content.error) {
+        await addDoc(collection(db, 'records'), {
+          childId: child?.id || '',
+          childName: child?.name || '',
+          userId: user.id || '',
+          userName: user.name || '',
+          type: 'SALVAR_ESCOLA',
+          data: content.data,
+          date: new Date().toISOString()
+        });
+        
+        // Reset rows
+        setRows(DISCIPLINAS.map((d) => ({
+          id: d,
+          disciplina: d,
+          concentracao: OPCOES.concentracao[0].value,
+          foco: OPCOES.foco[0].value,
+          espera: OPCOES.espera[0].value,
+          organizacao: OPCOES.organizacao[0].value,
+          conclusao: OPCOES.conclusao[0].value,
+          humor: OPCOES.humor[0].value,
+          obs: ''
+        })));
+      }
     } catch (err: any) {
       setResponse({ error: err.message || 'Erro de conexão' });
     } finally {

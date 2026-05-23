@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Child, TDAHRole } from '../types.ts';
 import { Plus, Users, Baby, ShieldAlert, Database, Save, CheckCircle } from 'lucide-react';
-import { getAccessToken } from '../firebase.ts';
 
 interface AdminPanelProps {
   users: User[];
@@ -21,37 +20,6 @@ export function AdminPanel({ users, children, onAddUser, onAddChild, onUpdateUse
     childId: '',
     canViewDashboard: false
   });
-
-  const [spreadsheetId, setSpreadsheetId] = useState('');
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [settingsSaved, setSettingsSaved] = useState(false);
-
-  useEffect(() => {
-     fetch('/api/settings')
-       .then(res => res.json())
-       .then(data => {
-           if (data.spreadsheetId) setSpreadsheetId(data.spreadsheetId);
-       })
-       .catch(console.error);
-  }, []);
-
-  const handleSaveSettings = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setSavingSettings(true);
-      try {
-          await fetch('/api/settings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ spreadsheetId })
-          });
-          setSettingsSaved(true);
-          setTimeout(() => setSettingsSaved(false), 3000);
-      } catch (err) {
-          console.error(err);
-      } finally {
-          setSavingSettings(false);
-      }
-  };
 
   const handleAddChild = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,42 +64,6 @@ export function AdminPanel({ users, children, onAddUser, onAddChild, onUpdateUse
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 font-sans">
       <div className="lg:col-span-8 flex flex-col gap-8">
         
-        {/* Google Sheets Config */}
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-              <Database className="w-5 h-5" />
-            </div>
-            <div>
-               <h2 className="text-xl font-bold text-slate-800">Integração com Google Sheets</h2>
-               <p className="text-sm text-slate-500">Configure a planilha onde <strong>todos</strong> os registros serão exportados em tempo real.</p>
-            </div>
-          </div>
-          
-          <form onSubmit={handleSaveSettings} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">ID da Planilha (Spreadsheet ID)</label>
-              <input
-                type="text"
-                value={spreadsheetId}
-                onChange={(e) => setSpreadsheetId(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all font-mono text-sm"
-                placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-              />
-              <p className="text-xs text-slate-400 mt-2">Dica: Extraia o ID da URL da planilha. Importante certificar-se de ter conectado com o Google no Menu lateral.</p>
-            </div>
-            <div className="flex justify-end">
-                <button
-                type="submit"
-                disabled={savingSettings}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold rounded-xl flex items-center gap-2 transition-colors w-fit"
-                >
-                {settingsSaved ? <><CheckCircle className="w-4 h-4" /> Salvo</> : <><Save className="w-4 h-4" /> Salvar Configuração</>}
-                </button>
-            </div>
-          </form>
-        </section>
-
         {/* Child Registration */}
         <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
           <div className="flex items-center gap-3 mb-6">
@@ -280,15 +212,6 @@ export function AdminPanel({ users, children, onAddUser, onAddChild, onUpdateUse
             </span>
             <h3 className="text-white text-2xl font-bold mt-4 leading-tight">Diretório de Acessos</h3>
           </div>
-          
-          <a
-            href="/api/export"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 px-4 py-3 rounded-xl text-sm font-semibold transition-colors border border-emerald-500/30 w-full"
-          >
-             Baixar Planilha Completa (CSV)
-          </a>
         </div>
         
         <div className="flex-1 overflow-auto space-y-4">

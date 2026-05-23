@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Loader2, LayoutDashboard, Table as TableIcon, Filter, Download, Trash2 } from 'lucide-react';
 import { User, Child } from '../types.ts';
+import { collection, onSnapshot, query, where, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase.ts';
 
 interface DashboardProps {
     currentUser: User;
@@ -34,23 +36,25 @@ export function Dashboard({ currentUser }: DashboardProps) {
   const [viewMode, setViewMode] = useState<'charts' | 'table'>('charts');
 
   useEffect(() => {
-    fetchRecords();
-  }, []);
-
-  const fetchRecords = () => {
     setLoading(true);
-    fetch('/api/records')
-      .then(res => res.json())
-      .then(data => setRecords(data))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  };
+    let q;
+    if (currentUser.role === 'admin') {
+      q = collection(db, 'records');
+    } else {
+      q = query(collection(db, 'records'), where('userId', '==', currentUser.id));
+    }
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setRecords(docs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [currentUser]);
 
   const handleDelete = async (id: string) => {
       if (!confirm('Tem certeza que deseja excluir este registro?')) return;
       try {
-          await fetch(`/api/records/${id}`, { method: 'DELETE' });
-          fetchRecords();
+          await deleteDoc(doc(db, 'records', id));
       } catch (e) {
           console.error(e);
       }

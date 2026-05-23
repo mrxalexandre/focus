@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Bot, FileText, Loader2, Database, Table, Calendar } from 'lucide-react';
 import { User, Child } from '../types.ts';
 import { RecordsTimeline } from './RecordsTimeline.tsx';
+import { collection, onSnapshot, query, where, addDoc } from 'firebase/firestore';
+import { db } from '../firebase.ts';
 
 interface PaisViewProps {
   user: User;
@@ -16,12 +18,13 @@ export function PaisView({ user, child }: PaisViewProps) {
   useEffect(() => {
     if (!child) return;
     setLoadingRecords(true);
-    fetch(`/api/records?childId=${child.id}`)
-      .then(res => res.json())
-      .then(data => data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()))
-      .then(data => setRecords(data))
-      .catch(err => console.error(err))
-      .finally(() => setLoadingRecords(false));
+    const q = query(collection(db, 'records'), where('childId', '==', child.id));
+    const unsub = onSnapshot(q, (snapshot) => {
+      let docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setRecords(docs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoadingRecords(false);
+    });
+    return () => unsub();
   }, [child]);
 
   const filteredRecords = useMemo(() => {
@@ -36,18 +39,9 @@ export function PaisView({ user, child }: PaisViewProps) {
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Acompanhamento Familiar</h2>
           <p className="text-slate-500 text-sm mt-3 leading-relaxed max-w-2xl">
             Olá, <strong>{user.name}</strong>. Estes são os registros unificados do acompanhamento de <strong>{child?.name || 'seu filho(a)'}</strong>.
-            Você pode visualizar o histórico amigável nesta tela ou baixar a planilha para visualizar no Excel/Google Sheets.
+            Você pode visualizar o histórico amigável nesta tela.
           </p>
         </div>
-        <a
-          href={`/api/export?childId=${child?.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-700 px-5 py-3 rounded-xl text-sm font-bold transition-all shadow-sm shadow-emerald-200 hover:shadow-md"
-        >
-          <Table className="w-5 h-5" />
-          Baixar Planilha (CSV)
-        </a>
       </div>
 
       <div className="flex items-center gap-2 mb-8 bg-slate-50 p-3 rounded-xl border border-slate-100 w-fit">

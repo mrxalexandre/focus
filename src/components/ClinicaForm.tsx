@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Send, Bot, Database, Loader2, Calendar } from 'lucide-react';
 import { EngineResponse, User, Child } from '../types.ts';
 import { RecordsTimeline } from './RecordsTimeline.tsx';
-import { getAccessToken } from '../firebase.ts';
+import { collection, onSnapshot, query, where, addDoc } from 'firebase/firestore';
+import { db } from '../firebase.ts';
 
 interface ClinicaFormProps {
   user: User;
@@ -19,22 +20,18 @@ export function ClinicaForm({ user, child }: ClinicaFormProps) {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [filterDate, setFilterDate] = useState('');
 
-  const fetchRecords = () => {
-      setLoadingRecords(true);
-      fetch(`/api/records?childId=${child?.id}`)
-        .then(res => res.json())
-        .then(data => data.filter((r: any) => r.userId === user.id || (r.data?.Profissional && r.data.Profissional === user.name)))
-        .then(data => data.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()))
-        .then(setRecords)
-        .catch(console.error)
-        .finally(() => setLoadingRecords(false));
-  };
-
   useEffect(() => {
-      if (activeTab === 'history') {
-          fetchRecords();
-      }
-  }, [activeTab, child]);
+    if (!child) return;
+    setLoadingRecords(true);
+    const q = query(collection(db, 'records'), where('childId', '==', child.id));
+    const unsub = onSnapshot(q, (snapshot) => {
+      let docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      docs = docs.filter((r: any) => r.userId === user.id || (r.data?.Profissional && r.data.Profissional === user.name));
+      setRecords(docs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setLoadingRecords(false);
+    });
+    return () => unsub();
+  }, [child, user]);
 
   const filteredRecords = useMemo(() => {
      if (!filterDate) return records;
@@ -52,15 +49,9 @@ export function ClinicaForm({ user, child }: ClinicaFormProps) {
     const autoContext = `CONTEXTO AUTOMÁTICO DO SISTEMA (Não ignorar):\nPaciente: ${child?.name || 'Não atribuído'}\nProfissional: ${user.name}\nEspecialidade: ${user.role}\nData/Hora: ${dataHora}\n\nRELATO DA SESSÃO:\n${inputData}`;
 
     try {
-      const gToken = await getAccessToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (gToken) {
-          headers['Authorization'] = `Bearer ${gToken}`;
-      }
-
       const res = await fetch('/api/engine', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           intent: 'SALVAR_CLINICA',
           inputData: autoContext,
@@ -72,7 +63,18 @@ export function ClinicaForm({ user, child }: ClinicaFormProps) {
       });
       const content = await res.json();
       setResponse(content);
-      if (!content.error) setInputData('');
+      if (!content.error) {
+        await addDoc(collection(db, 'records'), {
+          childId: child?.id || '',
+          childName: child?.name || '',
+          userId: user.id || '',
+          userName: user.name || '',
+          type: 'SALVAR_CLINICA',
+          data: content.data,
+          date: new Date().toISOString()
+        });
+        setInputData('');
+      }
     } catch (err: any) {
       setResponse({ error: err.message || 'Erro de conexão' });
     } finally {
